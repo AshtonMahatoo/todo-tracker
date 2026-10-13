@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Ashton's To-Do Tracker</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one working column — scale switch (Day/Week/Month/Year) + period navigator, then that period's tasks, then a roll-up of the smaller periods inside it. */
+:root{
+  color-scheme:light;
+  --bg:#f3f5f4; --surface:#ffffff; --sunk:#e8ecea; --fg:#18201d; --muted:#5d6964; --line:#d5dcd8;
+  --accent:#2340b8; --accent-ink:#ffffff; --accent-soft:#e3e8fb;
+  --high:#c2361f; --high-soft:#fbe6e2; --med:#a86a00; --med-soft:#fbf0d9; --low:#3b7a57; --low-soft:#e2f1e8;
+  --font-display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --font-body:"Figtree",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#111614; --surface:#1a201e; --sunk:#151b19; --fg:#e7ecea; --muted:#97a39e; --line:#2c3532;
+  --accent:#8ea4ff; --accent-ink:#0d1330; --accent-soft:#232c52;
+  --high:#ff8a74; --high-soft:#3a201b; --med:#f0b64d; --med-soft:#36290f; --low:#7ccf9f; --low-soft:#183026;
+  color-scheme:dark}}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);background:var(--bg)}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5}
+[hidden]{display:none!important}
+.wrap{max-width:820px;margin:0 auto;padding-inline:16px;padding-block:24px 72px;display:flex;flex-direction:column;gap:20px}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid transparent;color:inherit;background:transparent}
+input,select,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px}
+textarea{width:100%;resize:vertical;min-height:60px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+.brandrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.brand{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.sync{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--sunk);color:var(--muted);display:flex;gap:6px;align-items:center}
+.sync::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.sync.ok::before{background:var(--low)}
+.sync.busy::before{background:var(--med)}
+.sync.err{background:var(--high-soft);color:var(--high)}
+.sync.err::before{background:var(--high)}
+.sync:hover{color:var(--fg)}
+.scales{display:flex;gap:4px;background:var(--sunk);padding:4px;border-radius:12px}
+.scales button{padding:7px 14px;font-weight:600;font-size:14px;color:var(--muted)}
+.scales button[aria-pressed=true]{background:var(--surface);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+.nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.nav h1{font-family:var(--font-display);font-weight:700;font-size:clamp(26px,5.5vw,36px);line-height:1.08;margin:0;letter-spacing:-.02em;text-wrap:balance;flex:1 1 260px;min-width:0}
+.nav h1 small{display:block;font-family:var(--font-mono);font-weight:400;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.navbtns{display:flex;gap:6px}
+.navbtns button{border:1px solid var(--line);background:var(--surface);padding:7px 12px;font-weight:500}
+.navbtns button:hover{border-color:var(--accent)}
+.navbtns .now[disabled]{opacity:.45;cursor:default}
+
+.progress{display:flex;align-items:center;gap:12px}
+.bar{flex:1;height:8px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
+.progress .lbl{font-family:var(--font-mono);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+form.add{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.add-row{display:flex;gap:8px;align-items:center}
+.add .title-in{flex:1;min-width:0;font-size:16px;border:none;background:transparent;padding:6px 2px}
+.add .title-in:focus-visible{outline:none}
+.add-opts{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--muted)}
+.add-opts select{padding:5px 8px;font-size:13px}
+.add-opts label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.btn-primary{background:var(--accent);color:var(--accent-ink);font-weight:600;padding:8px 16px}
+.btn-primary:disabled{opacity:.45;cursor:default}
+.btn-ghost{color:var(--muted);padding:6px 9px}
+.btn-ghost:hover{background:var(--sunk);color:var(--fg)}
+.btn-soft{background:var(--accent-soft);color:var(--accent);padding:5px 10px;font-weight:600;font-size:13px}
+.btn-danger{background:var(--high-soft);color:var(--high);padding:6px 10px;font-weight:600;font-size:13px}
+.btn-line{border:1px solid var(--line);background:var(--surface);padding:7px 12px;font-weight:500}
+
+.section{display:flex;flex-direction:column;gap:6px}
+.section h2{font-family:var(--font-mono);font-weight:500;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:4px 2px 2px;display:flex;gap:8px;align-items:center}
+.section h2.warn{color:var(--high)}
+.task{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);display:grid;grid-template-columns:auto 1fr auto;gap:10px;padding:10px 10px 10px 12px;align-items:start;position:relative}
+.task::before{content:"";position:absolute;left:-1px;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0}
+.task.p-high::before{background:var(--high)}
+.task.p-med::before{background:var(--med)}
+.check{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);padding:0;display:grid;place-items:center;margin-top:1px}
+.check:hover{border-color:var(--accent)}
+.task.done .check{background:var(--accent);border-color:var(--accent)}
+.check svg{width:12px;height:12px;stroke:var(--accent-ink);opacity:0}
+.task.done .check svg{opacity:1}
+.body{min-width:0;display:flex;flex-direction:column;gap:3px}
+.ttl{font-weight:500;overflow-wrap:anywhere;cursor:text}
+.task.done .ttl{text-decoration:line-through;color:var(--muted)}
+.notes{font-size:13px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+.meta{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px}
+.tag{padding:1px 8px;border-radius:999px;background:var(--sunk);color:var(--muted);font-size:11.5px}
+.tag.rep{background:var(--accent-soft);color:var(--accent)}
+.prio{padding:1px 8px;border-radius:999px;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.prio.high{background:var(--high-soft);color:var(--high)}
+.prio.low{background:var(--low-soft);color:var(--low)}
+.actions{display:flex;gap:2px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.edit{grid-column:1 / -1;display:flex;flex-direction:column;gap:8px;padding-top:4px}
+.edit .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.edit .btns{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.empty{border:1px dashed var(--line);border-radius:12px;padding:18px;text-align:center;color:var(--muted);font-size:14px}
+.empty strong{display:block;color:var(--fg);font-family:var(--font-display);font-size:17px;margin-bottom:2px}
+
+/* roll-ups */
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px}
+.cell{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:left;display:flex;flex-direction:column;gap:6px;min-width:0}
+.cell:hover{border-color:var(--accent)}
+.cell.today{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.cell .d{font-family:var(--font-mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.cell .n{font-family:var(--font-display);font-weight:700;font-size:20px;line-height:1}
+.cell .c{font-family:var(--font-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.mini{height:4px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.mini i{display:block;height:100%;background:var(--accent)}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.cal .hd{font-family:var(--font-mono);font-size:10.5px;color:var(--muted);text-align:center;text-transform:uppercase;letter-spacing:.06em;padding-bottom:2px}
+.day{aspect-ratio:1/1;max-width:100%;border-radius:8px;border:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column;justify-content:space-between;padding:5px 6px;text-align:left;position:relative;overflow:hidden;min-width:0}
+.day .fill{position:absolute;inset:0;background:var(--accent);pointer-events:none}
+.day span{position:relative;font-family:var(--font-mono);font-size:12px;font-variant-numeric:tabular-nums}
+.day .k{font-size:10px;color:var(--muted)}
+.day.today{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.day.blank{visibility:hidden}
+.day:hover{border-color:var(--accent)}
+.legend{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.legend .sw{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid var(--line);position:relative;overflow:hidden;background:var(--surface)}
+.legend .sw i{position:absolute;inset:0;background:var(--accent)}
+.months{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.mon{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;text-align:left;display:flex;flex-direction:column;gap:6px}
+.mon:hover{border-color:var(--accent)}
+.mon.cur{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.mon b{font-family:var(--font-display);font-size:17px}
+.mon .c{font-family:var(--font-mono);font-size:11px;color:var(--muted);display:flex;justify-content:space-between;gap:6px}
+.wkrow{display:flex;flex-direction:column;gap:6px}
+.wk{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px 12px;text-align:left}
+.wk:hover{border-color:var(--accent)}
+.wk.cur{border-color:var(--accent)}
+.wk .c{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.notice{font-size:13px;padding:10px 12px;border-radius:8px;background:var(--med-soft);color:var(--med);display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.notice button{color:inherit;font-weight:600;text-decoration:underline;padding:0}
+
+/* settings */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.panel h2{font-family:var(--font-display);font-size:20px;margin:0}
+.panel p{margin:0;color:var(--muted);font-size:13.5px;max-width:65ch}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.fields label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.fields input{width:100%;min-width:0}
+.fields .wide{grid-column:1 / -1}
+.panel .btns{display:flex;gap:8px;flex-wrap:wrap}
+.panel .msg{font-size:13px}
+.panel .msg.err{color:var(--high)}
+.panel .msg.ok{color:var(--low)}
+.foot{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;font-size:12px;color:var(--muted);padding-top:12px;border-top:1px solid var(--line)}
+.foot button{color:var(--muted);text-decoration:underline;padding:2px 4px}
+
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 14px;border-radius:999px;font-size:13px;display:flex;gap:10px;align-items:center;z-index:5;max-width:calc(100% - 32px)}
+.toast button{color:var(--accent-soft);font-weight:600;padding:0}
+@media (max-width:520px){
+  .week{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .cell .n{font-size:17px}
+  .day{padding:3px 4px}.day .k{display:none}
+  .wk{grid-template-columns:minmax(0,1fr) 70px auto}
+  .actions .lbl{display:none}
+}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brandrow">
+      <div class="brand">To-Do Tracker</div>
+      <button type="button" class="sync" id="syncChip" title="Sync settings">Saved on this device</button>
+    </div>
+    <div class="scales" role="group" aria-label="Time scale" id="scales">
+      <button type="button" data-scale="day">Day</button>
+      <button type="button" data-scale="week">Week</button>
+      <button type="button" data-scale="month">Month</button>
+      <button type="button" data-scale="year">Year</button>
+    </div>
+  </div>
+
+  <section class="panel" id="settings" hidden aria-labelledby="setH">
+    <h2 id="setH">Sync with GitHub</h2>
+    <p>Your tasks are saved as <code>tasks.json</code> in a private GitHub repository, so every device you connect sees the same list. Use a fine-grained token that can only read and write that one repository. The token is kept in this browser only.</p>
+    <form id="setForm" class="fields" autocomplete="off">
+      <label>GitHub username or org<input id="sOwner" required placeholder="your-username"></label>
+      <label>Private data repository<input id="sRepo" required placeholder="todo-data"></label>
+      <label>Branch<input id="sBranch" placeholder="main"></label>
+      <label>File path<input id="sPath" placeholder="tasks.json"></label>
+      <label class="wide">Fine-grained access token<input id="sToken" type="password" required placeholder="github_pat_…" autocomplete="off" spellcheck="false"></label>
+      <div class="wide btns">
+        <button type="submit" class="btn-primary" id="sConnect">Connect</button>
+        <button type="button" class="btn-line" id="sDisconnect" hidden>Disconnect this device</button>
+        <button type="button" class="btn-ghost" id="sClose">Close</button>
+      </div>
+      <div class="wide msg" id="sMsg" role="status"></div>
+    </form>
+  </section>
+
+  <div class="nav">
+    <h1 id="periodTitle">Today</h1>
+    <div class="navbtns">
+      <button type="button" id="prev" aria-label="Previous">‹</button>
+      <button type="button" id="now" class="now">Now</button>
+      <button type="button" id="next" aria-label="Next">›</button>
+    </div>
+  </div>
+
+  <div class="progress" id="progress"></div>
+  <div id="notice" class="notice" hidden></div>
+
+  <form class="add" id="addForm" autocomplete="off">
+    <div class="add-row">
+      <input type="text" id="newTitle" class="title-in" placeholder="Add a task…" maxlength="200" aria-label="New task">
+      <button class="btn-primary" id="addBtn" type="submit" disabled>Add</button>
+    </div>
+    <div class="add-opts">
+      <label for="newPrio">Priority
+        <select id="newPrio"><option value="low">Low</option><option value="med" selected>Medium</option><option value="high">High</option></select>
+      </label>
+      <label><input type="checkbox" id="newRepeat"> <span id="repeatLbl">Repeat every day</span></label>
+    </div>
+  </form>
+
+  <main id="main"></main>
+
+  <div class="foot">
+    <button type="button" id="exportBtn">Export tasks (JSON)</button>
+    <button type="button" id="importBtn">Import tasks</button>
+    <input type="file" id="importFile" accept="application/json,.json" hidden>
+    <button type="button" id="openSettings">Sync settings</button>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const pad = n => String(n).padStart(2,"0");
+  const ymd = d => d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+  const parse = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y,(m||1)-1,d||1); };
+  const monday = d => { const x = new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; };
+  const addDays = (d,n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+  function isoWeek(d){ const t = new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const day = t.getUTCDay()||7; t.setUTCDate(t.getUTCDate()+4-day); const y0 = new Date(Date.UTC(t.getUTCFullYear(),0,1)); return Math.ceil(((t-y0)/86400000+1)/7); }
+  const keyFor = (h,d) => h==="day" ? ymd(d) : h==="week" ? ymd(monday(d)) : h==="month" ? d.getFullYear()+"-"+pad(d.getMonth()+1) : String(d.getFullYear());
+  const NOUN = {day:"day",week:"week",month:"month",year:"year"};
+  const ADJ = {day:"Daily",week:"Weekly",month:"Monthly",year:"Yearly"};
+  const fmt = (d,o) => d.toLocaleDateString(undefined,o);
+  const newId = () => Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+
+  /* ================= storage ================= */
+  const LS = {
+    get(k,f){ try{ const v = localStorage.getItem(k); return v==null ? f : JSON.parse(v); }catch(_){ return f; } },
+    set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(_){} },
+    del(k){ try{ localStorage.removeItem(k); }catch(_){} }
+  };
+  let settings = LS.get("todo.settings", null);     // {owner, repo, branch, path, token}
+  let base = LS.get("todo.base", {tasks:[], sha:null}); // last copy known to match GitHub (or the local copy when not connected)
+  let pending = LS.get("todo.pending", []);         // edits not yet saved to GitHub
+  let tasks = [];
+  let sync = {state: settings ? "busy" : "local", text: settings ? "Connecting…" : "Saved on this device", lastSync: null};
+  const connected = () => !!(settings && settings.token);
+
+  function deepMerge(a,b){
+    const o = {...a};
+    for(const k in b){
+      const v = b[k];
+      o[k] = (v && typeof v==="object" && !Array.isArray(v) && a[k] && typeof a[k]==="object" && !Array.isArray(a[k])) ? deepMerge(a[k],v) : v;
+    }
+    return o;
+  }
+  function applyOp(list, op){
+    if(op.op==="add"){ return list.some(t=>t.id===op.task.id) ? list : list.concat([op.task]); }
+    if(op.op==="set"){ return list.some(t=>t.id===op.task.id) ? list.map(t=>t.id===op.task.id?op.task:t) : list.concat([op.task]); }
+    if(op.op==="update"){ return list.map(t=>t.id===op.id ? deepMerge(t,op.patch) : t); }
+    if(op.op==="delete"){ return list.filter(t=>t.id!==op.id); }
+    if(op.op==="replaceAll"){ return op.tasks.slice(); }
+    return list;
+  }
+  const applyAll = (list, ops) => ops.reduce(applyOp, list);
+  function recompute(){ tasks = applyAll(base.tasks||[], pending); }
+  function persist(){ LS.set("todo.base", base); LS.set("todo.pending", pending); }
+
+  function commit(op){
+    if(connected()){ pending.push(op); persist(); recompute(); render(); scheduleFlush(); }
+    else { base = {tasks: applyOp(base.tasks||[], op), sha:null}; persist(); recompute(); render(); }
+  }
+
+  /* ---- GitHub contents API ---- */
+  const b64enc = s => { const bytes = new TextEncoder().encode(s); let bin=""; for(let i=0;i<bytes.length;i+=0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i,i+0x8000)); return btoa(bin); };
+  const b64dec = b => new TextDecoder().decode(Uint8Array.from(atob(b.replace(/\s/g,"")), c=>c.charCodeAt(0)));
+  const api = (s, path) => `https://api.github.com/repos/${encodeURIComponent(s.owner)}/${encodeURIComponent(s.repo)}${path}`;
+  const filePath = s => (s.path||"tasks.json").split("/").map(encodeURIComponent).join("/");
+  function headers(s){ return {"Accept":"application/vnd.github+json","Authorization":"Bearer "+s.token,"X-GitHub-Api-Version":"2022-11-28"}; }
+  function httpErr(res, extra){ const e = new Error(extra || ("GitHub returned "+res.status)); e.status = res.status; return e; }
+
+  async function ghGet(s){
+    const res = await fetch(api(s,"/contents/"+filePath(s))+"?ref="+encodeURIComponent(s.branch||"main")+"&t="+Date.now(), {headers:headers(s), cache:"no-store"});
+    if(res.status===404) return {tasks:[], sha:null, missing:true};
+    if(!res.ok) throw httpErr(res);
+    const j = await res.json();
+    let data = {tasks:[]};
+    try{ data = JSON.parse(b64dec(j.content||"")); }catch(_){ throw Object.assign(new Error("tasks.json in your repository isn't valid JSON."),{status:0}); }
+    return {tasks: Array.isArray(data.tasks) ? data.tasks : [], sha: j.sha};
+  }
+  async function ghPut(s, list, sha){
+    const body = {message:"Update tasks", branch: s.branch||"main", content: b64enc(JSON.stringify({version:1, updatedAt:new Date().toISOString(), tasks:list}, null, 1))};
+    if(sha) body.sha = sha;
+    const res = await fetch(api(s,"/contents/"+filePath(s)), {method:"PUT", headers:{...headers(s),"Content-Type":"application/json"}, body:JSON.stringify(body)});
+    if(!res.ok) throw httpErr(res);
+    const j = await res.json();
+    return j.content.sha;
+  }
+  function explain(e){
+    if(!e) return "Something went wrong.";
+    if(e.status===401) return "GitHub rejected the token. It may have expired — create a new one in Sync settings.";
+    if(e.status===403) return "The token can't write to that repository. Give it Contents: Read and write on the data repo.";
+    if(e.status===404) return "GitHub can't find that repository or branch with this token.";
+    if(e.status===0 && e.message) return e.message;
+    if(e instanceof TypeError) return "Can't reach GitHub. Your changes are kept here and will save when you're back online.";
+    return e.message || "Something went wrong.";
+  }
+
+  let saving = false, flushTimer = null, retryTimer = null;
+  function setSync(state, text){ sync.state = state; sync.text = text; renderSync(); }
+  function scheduleFlush(){ clearTimeout(flushTimer); flushTimer = setTimeout(flush, 700); setSync("busy","Saving…"); }
+  async function flush(){
+    if(!connected() || saving || !pending.length) return;
+    saving = true; clearTimeout(retryTimer);
+    let attempts = 0;
+    try{
+      while(pending.length && attempts < 4){
+        attempts++;
+        const n = pending.length;
+        const next = applyAll(base.tasks||[], pending.slice(0,n));
+        try{
+          const sha = await ghPut(settings, next, base.sha);
+          base = {tasks:next, sha}; pending.splice(0,n); persist();
+        }catch(e){
+          if(e.status===409 || e.status===422){        // someone else saved first: take theirs, replay ours
+            const remote = await ghGet(settings); base = {tasks:remote.tasks, sha:remote.sha}; persist(); recompute(); render();
+            continue;
+          }
+          throw e;
+        }
+      }
+      sync.lastSync = Date.now();
+      setSync(pending.length ? "busy" : "ok", pending.length ? "Saving…" : "Synced");
+      if(pending.length) scheduleFlush();
+    }catch(e){
+      const offline = e instanceof TypeError;
+      setSync("err", offline ? "Offline — changes waiting" : "Not saved");
+      if(!offline) showNotice(explain(e), true);
+      retryTimer = setTimeout(flush, offline ? 15000 : 60000);
+    }finally{ saving = false; }
+  }
+  async function pull(quiet){
+    if(!connected() || saving || pending.length) return;
+    try{
+      const r = await ghGet(settings);
+      if(r.sha !== base.sha){ base = {tasks:r.tasks, sha:r.sha}; persist(); recompute(); render(); }
+      sync.lastSync = Date.now(); setSync("ok","Synced"); showNotice("");
+    }catch(e){
+      setSync("err", e instanceof TypeError ? "Offline" : "Sync problem");
+      if(!quiet || !(e instanceof TypeError)) showNotice(explain(e), true);
+    }
+  }
+  setInterval(()=>pull(true), 60000);
+  document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") pending.length ? flush() : pull(true); });
+  window.addEventListener("online", ()=>{ pending.length ? flush() : pull(true); });
+
+  /* ================= model ================= */
+  let scale = LS.get("todo.scale","day"); if(!["day","week","month","year"].includes(scale)) scale="day";
+  let cur = new Date();
+  let editing=null, confirmDel=null;
+
+  function itemsFor(h,key){
+    return tasks.filter(t => (t.horizon||"day")===h && (t.repeat
+      ? key >= (t.startKey||"") && (!t.endKey || key < t.endKey)
+      : (t.period||"")===key));
+  }
+  const isDone = (t,key) => t.repeat ? !!(t.doneFor && t.doneFor[key]) : !!t.done;
+  function stats(h,key){ const it = itemsFor(h,key); return {total:it.length, done:it.filter(t=>isDone(t,key)).length}; }
+  const prioRank = {high:0,med:1,low:2};
+  const sorter = key => (a,b) => (isDone(a,key)-isDone(b,key)) || ((prioRank[a.priority]??1)-(prioRank[b.priority]??1)) || ((a.createdAt||0)-(b.createdAt||0));
+  const pct = (a,b) => b ? Math.round(a/b*100) : 0;
+
+  /* ================= ui helpers ================= */
+  function toast(msg, undo){
+    const t=$("#toast"); t.innerHTML="<span>"+esc(msg)+"</span>"+(undo?'<button type="button" id="undoBtn">Undo</button>':"");
+    t.hidden=false; if(undo) $("#undoBtn").onclick=()=>{t.hidden=true;undo();};
+    clearTimeout(toast._t); toast._t=setTimeout(()=>{t.hidden=true;},5000);
+  }
+  function showNotice(m, withSettings){
+    const n=$("#notice");
+    if(!m){ n.hidden=true; return; }
+    n.innerHTML = "<span>"+esc(m)+"</span>"+(withSettings?'<button type="button" data-open-settings>Sync settings</button>':"");
+    n.hidden=false;
+  }
+  function renderSync(){
+    const c=$("#syncChip");
+    c.className = "sync " + (sync.state==="ok"?"ok":sync.state==="busy"?"busy":sync.state==="err"?"err":"");
+    c.textContent = connected() ? sync.text : "Saved on this device · Set up sync";
+  }
+
+  /* ================= header ================= */
+  function periodTitle(){
+    const now = new Date();
+    if(scale==="day"){
+      const k=ymd(cur), t=ymd(now), diff=Math.round((parse(k)-parse(t))/86400000);
+      const rel = diff===0?"Today":diff===1?"Tomorrow":diff===-1?"Yesterday":fmt(cur,{weekday:"long"});
+      return `${fmt(cur,{month:"long",day:"numeric",year:"numeric"})}<small>${rel} · Week ${isoWeek(cur)}</small>`;
+    }
+    if(scale==="week"){
+      const m=monday(cur), s=addDays(m,6);
+      const same = m.getMonth()===s.getMonth();
+      const a = fmt(m,{month:"short",day:"numeric"}), b = same ? s.getDate() : fmt(s,{month:"short",day:"numeric"});
+      const rel = keyFor("week",cur)===keyFor("week",now) ? "This week" : "";
+      return `${a} – ${b}, ${s.getFullYear()}<small>Week ${isoWeek(m)}${rel?" · "+rel:""}</small>`;
+    }
+    if(scale==="month"){
+      const rel = keyFor("month",cur)===keyFor("month",now) ? "This month" : "";
+      return `${fmt(cur,{month:"long",year:"numeric"})}<small>${rel||"&nbsp;"}</small>`;
+    }
+    return `${cur.getFullYear()}<small>${cur.getFullYear()===now.getFullYear()?"This year":"&nbsp;"}</small>`;
+  }
+
+  /* ================= task row ================= */
+  function taskHTML(x,key,opts={}){
+    const done=isDone(x,key), pr=x.priority||"med";
+    const meta=[
+      x.repeat?`<span class="tag rep">↻ ${ADJ[x.horizon||"day"]}</span>`:"",
+      pr!=="med"?`<span class="prio ${pr}">${pr==="high"?"High":"Low"}</span>`:"",
+      opts.from?`<span class="tag">${esc(opts.from)}</span>`:""
+    ].filter(Boolean).join("");
+    const check=`<button type="button" class="check" data-act="toggle" data-id="${esc(x.id)}" data-key="${esc(key)}" aria-label="${done?"Mark not done":"Mark done"}"><svg viewBox="0 0 12 12" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.3l2.3 2.2 4.7-5"/></svg></button>`;
+    let actions;
+    if(confirmDel===x.id){
+      actions = x.repeat
+        ? `<button type="button" class="btn-ghost" data-act="stop" data-id="${esc(x.id)}" data-key="${esc(key)}">Stop from here</button><button type="button" class="btn-danger" data-act="del-yes" data-id="${esc(x.id)}">Delete all</button><button type="button" class="btn-ghost" data-act="del-no">Keep</button>`
+        : `<button type="button" class="btn-danger" data-act="del-yes" data-id="${esc(x.id)}">Delete</button><button type="button" class="btn-ghost" data-act="del-no">Keep</button>`;
+    } else {
+      actions = (opts.moveTo?`<button type="button" class="btn-soft" data-act="move" data-id="${esc(x.id)}" data-key="${esc(opts.moveTo)}">Move here</button>`:"")+
+        `<button type="button" class="btn-ghost" data-act="edit" data-id="${esc(x.id)}" aria-label="Edit">✎<span class="lbl"> Edit</span></button><button type="button" class="btn-ghost" data-act="del" data-id="${esc(x.id)}" aria-label="Delete">✕</button>`;
+    }
+    let edit="";
+    if(editing===x.id){
+      const eid = esc(x.id);
+      edit=`<form class="edit" data-id="${eid}">
+        <input type="text" name="title" id="e-title-${eid}" value="${esc(x.title)}" maxlength="200" required aria-label="Title">
+        <textarea name="notes" id="e-notes-${eid}" placeholder="Notes (optional)" maxlength="2000">${esc(x.notes||"")}</textarea>
+        <div class="row"><label for="e-prio-${eid}" class="tag">Priority</label>
+          <select name="priority" id="e-prio-${eid}">${["low","med","high"].map(p=>`<option value="${p}" ${p===pr?"selected":""}>${p==="med"?"Medium":p[0].toUpperCase()+p.slice(1)}</option>`).join("")}</select></div>
+        <div class="btns"><button type="button" class="btn-ghost" data-act="cancel">Cancel</button><button type="submit" class="btn-primary">Save</button></div>
+      </form>`;
+    }
+    return `<article class="task p-${pr} ${done?"done":""}">${check}
+      <div class="body"><div class="ttl" data-act="edit" data-id="${esc(x.id)}">${esc(x.title)}</div>${x.notes&&editing!==x.id?`<div class="notes">${esc(x.notes)}</div>`:""}${meta?`<div class="meta">${meta}</div>`:""}</div>
+      <div class="actions">${actions}</div>${edit}</article>`;
+  }
+
+  function listSection(h,key,label){
+    const items=itemsFor(h,key).sort(sorter(key));
+    const body = items.length ? items.map(t=>taskHTML(t,key)).join("")
+      : `<div class="empty"><strong>Nothing planned for this ${NOUN[h]}</strong>Add a ${h==="day"?"task":"goal"} above. Tick “Repeat” for things you do every ${NOUN[h]}.</div>`;
+    return `<section class="section"><h2>${label}<span>${items.length?stats(h,key).done+"/"+items.length:""}</span></h2>${body}</section>`;
+  }
+
+  function carryOver(h,key){
+    if(key!==keyFor(h,new Date())) return "";
+    const late=tasks.filter(t=>(t.horizon||"day")===h && !t.repeat && !t.done && (t.period||"")<key)
+      .sort((a,b)=>(a.period||"")<(b.period||"")?-1:1);
+    if(!late.length) return "";
+    const lbl = p => { if(h==="day") return fmt(parse(p),{month:"short",day:"numeric"}); if(h==="week") return "Week of "+fmt(parse(p),{month:"short",day:"numeric"}); if(h==="month") return fmt(parse(p+"-01"),{month:"short",year:"numeric"}); return p; };
+    return `<section class="section"><h2 class="warn">Unfinished from earlier<span>${late.length}</span></h2>${late.map(t=>taskHTML(t,t.period,{from:lbl(t.period),moveTo:key})).join("")}</section>`;
+  }
+
+  /* ================= roll-ups ================= */
+  const todayK = () => ymd(new Date());
+  function weekStrip(mon){
+    let h="";
+    for(let i=0;i<7;i++){
+      const d=addDays(mon,i), k=ymd(d), s=stats("day",k);
+      h+=`<button type="button" class="cell ${k===todayK()?"today":""}" data-go="day" data-date="${k}">
+        <span class="d">${fmt(d,{weekday:"short"})}</span><span class="n">${d.getDate()}</span>
+        <span class="mini"><i style="width:${pct(s.done,s.total)}%"></i></span>
+        <span class="c">${s.total?s.done+"/"+s.total:"—"}</span></button>`;
+    }
+    return `<section class="section"><h2>Days this week</h2><div class="week">${h}</div></section>`;
+  }
+  function monthCal(y,m){
+    const first=new Date(y,m,1), days=new Date(y,m+1,0).getDate(), lead=(first.getDay()+6)%7, tk=todayK();
+    let h=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(x=>`<div class="hd">${x}</div>`).join("");
+    for(let i=0;i<lead;i++) h+=`<div class="day blank"></div>`;
+    for(let d=1;d<=days;d++){
+      const k=ymd(new Date(y,m,d)), s=stats("day",k), r=s.total?s.done/s.total:0;
+      h+=`<button type="button" class="day ${k===tk?"today":""}" data-go="day" data-date="${k}" aria-label="${fmt(new Date(y,m,d),{month:"long",day:"numeric"})}: ${s.done} of ${s.total} done">
+        <i class="fill" style="opacity:${s.total?(0.12+r*0.6).toFixed(2):0}"></i><span>${d}</span><span class="k">${s.total?s.done+"/"+s.total:""}</span></button>`;
+    }
+    return `<section class="section"><h2>Days this month</h2><div class="cal">${h}</div>
+      <div class="legend">Darker = more of that day's tasks done <span class="sw"></span><span class="sw"><i style="opacity:.25"></i></span><span class="sw"><i style="opacity:.5"></i></span><span class="sw"><i style="opacity:.72"></i></span></div></section>`;
+  }
+  function weeksInMonth(y,m){
+    let mon=monday(new Date(y,m,1)); const end=new Date(y,m+1,0); let h=""; const ck=keyFor("week",new Date());
+    while(mon<=end){
+      const k=ymd(mon), s=stats("week",k), sun=addDays(mon,6);
+      h+=`<button type="button" class="wk ${k===ck?"cur":""}" data-go="week" data-date="${k}"><span>Week ${isoWeek(mon)} <span class="c">· ${fmt(mon,{month:"short",day:"numeric"})}–${fmt(sun,{month:"short",day:"numeric"})}</span></span>
+        <span class="mini"><i style="width:${pct(s.done,s.total)}%"></i></span><span class="c">${s.total?s.done+"/"+s.total+" goals":"no goals"}</span></button>`;
+      mon=addDays(mon,7);
+    }
+    return `<section class="section"><h2>Weekly goals this month</h2><div class="wkrow">${h}</div></section>`;
+  }
+  function yearMonths(y){
+    let h=""; const ck=keyFor("month",new Date()), tk=todayK();
+    for(let m=0;m<12;m++){
+      const k=y+"-"+pad(m+1), g=stats("month",k);
+      let dd=0, dt=0; const n=new Date(y,m+1,0).getDate();
+      for(let d=1;d<=n;d++){ const dk=ymd(new Date(y,m,d)); if(dk>tk) break; const s=stats("day",dk); dd+=s.done; dt+=s.total; }
+      h+=`<button type="button" class="mon ${k===ck?"cur":""}" data-go="month" data-date="${k}-01"><b>${fmt(new Date(y,m,1),{month:"long"})}</b>
+        <span class="mini"><i style="width:${pct(g.done,g.total)}%"></i></span>
+        <span class="c"><span>${g.total?g.done+"/"+g.total+" goals":"no goals"}</span><span>${dt?pct(dd,dt)+"% daily":""}</span></span></button>`;
+    }
+    return `<section class="section"><h2>Months this year</h2><div class="months">${h}</div></section>`;
+  }
+
+  /* ================= render ================= */
+  function render(){
+    document.querySelectorAll("#scales button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.scale===scale));
+    $("#periodTitle").innerHTML = periodTitle();
+    const key=keyFor(scale,cur);
+    $("#now").disabled = key===keyFor(scale,new Date());
+    $("#newTitle").placeholder = scale==="day" ? "Add a task for this day…" : `Add a goal for this ${NOUN[scale]}…`;
+    $("#repeatLbl").textContent = "Repeat every "+NOUN[scale];
+    renderSync();
+
+    const s=stats(scale,key);
+    $("#progress").innerHTML = `<div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct(s.done,s.total)}"><i style="width:${pct(s.done,s.total)}%"></i></div><span class="lbl">${s.total?`${s.done} of ${s.total} done · ${pct(s.done,s.total)}%`:"Nothing planned yet"}</span>`;
+
+    let html = carryOver(scale,key);
+    if(scale==="day"){
+      html += listSection("day",key,"Tasks");
+      const wk=keyFor("week",cur), wi=itemsFor("week",wk).filter(t=>!isDone(t,wk));
+      if(wi.length) html+=`<section class="section"><h2>Open goals this week<span>${wi.length}</span></h2>${wi.sort(sorter(wk)).map(t=>taskHTML(t,wk)).join("")}</section>`;
+    } else if(scale==="week"){
+      html += listSection("week",key,"Weekly goals") + weekStrip(parse(key));
+    } else if(scale==="month"){
+      html += listSection("month",key,"Monthly goals") + weeksInMonth(cur.getFullYear(),cur.getMonth()) + monthCal(cur.getFullYear(),cur.getMonth());
+    } else {
+      html += listSection("year",key,"Yearly goals") + yearMonths(cur.getFullYear());
+    }
+    $("#main").innerHTML = html;
+    if(editing && !render._focused){ const el=document.getElementById("e-title-"+editing); if(el){ el.focus(); render._focused=true; } }
+  }
+
+  /* ================= navigation ================= */
+  function setScale(s){ scale=s; editing=null; confirmDel=null; LS.set("todo.scale",s); render(); }
+  $("#scales").addEventListener("click",e=>{ const b=e.target.closest("[data-scale]"); if(b) setScale(b.dataset.scale); });
+  function shift(n){
+    const d=new Date(cur);
+    if(scale==="day") d.setDate(d.getDate()+n);
+    else if(scale==="week") d.setDate(d.getDate()+7*n);
+    else if(scale==="month"){ d.setDate(1); d.setMonth(d.getMonth()+n); }
+    else { d.setDate(1); d.setFullYear(d.getFullYear()+n); }
+    cur=d; editing=null; confirmDel=null; render();
+  }
+  $("#prev").onclick=()=>shift(-1); $("#next").onclick=()=>shift(1);
+  $("#now").onclick=()=>{ cur=new Date(); render(); };
+  document.addEventListener("keydown",e=>{
+    if(e.key==="Escape"&&(editing||confirmDel)){ editing=null; confirmDel=null; render(); return; }
+    if(e.target.closest("input,textarea,select")) return;
+    if(e.key==="ArrowLeft") shift(-1); else if(e.key==="ArrowRight") shift(1);
+  });
+
+  /* ================= add ================= */
+  const titleIn=$("#newTitle");
+  titleIn.addEventListener("input",()=>{ $("#addBtn").disabled=!titleIn.value.trim(); });
+  $("#addForm").addEventListener("submit",e=>{
+    e.preventDefault();
+    const title=titleIn.value.trim(); if(!title) return;
+    const key=keyFor(scale,cur), rep=$("#newRepeat").checked;
+    const task={id:newId(),title,notes:"",horizon:scale,priority:$("#newPrio").value,createdAt:Date.now(),
+      repeat:rep, period: rep?"":key, startKey: rep?key:"", endKey:"", done:false, doneAt:null, doneFor:{}};
+    titleIn.value=""; $("#addBtn").disabled=true; $("#newRepeat").checked=false; titleIn.focus();
+    commit({op:"add",task});
+    toast(rep?`Added — repeats every ${NOUN[scale]}`:"Added");
+  });
+
+  /* ================= task actions ================= */
+  $("#main").addEventListener("click",e=>{
+    const go=e.target.closest("[data-go]");
+    if(go){ cur=parse(go.dataset.date); setScale(go.dataset.go); window.scrollTo({top:0}); return; }
+    const el=e.target.closest("[data-act]"); if(!el||!el.dataset.act) return;
+    const act=el.dataset.act, id=el.dataset.id, key=el.dataset.key, x=tasks.find(t=>t.id===id);
+    if(act==="toggle"&&x){
+      if(x.repeat){ const v=!isDone(x,key); commit({op:"update",id,patch:{doneFor:{[key]:v}}}); if(v) toast("Done for this "+NOUN[x.horizon||"day"]); }
+      else { const v=!x.done; commit({op:"update",id,patch:{done:v,doneAt:v?Date.now():null}}); if(v) toast("Marked done",()=>commit({op:"update",id,patch:{done:false,doneAt:null}})); }
+    }
+    else if(act==="edit"){ editing=id; confirmDel=null; render._focused=false; render(); }
+    else if(act==="cancel"){ editing=null; render(); }
+    else if(act==="del"){ confirmDel=id; editing=null; render(); }
+    else if(act==="del-no"){ confirmDel=null; render(); }
+    else if(act==="del-yes"&&x){ const copy={...x}; confirmDel=null; commit({op:"delete",id}); toast("Deleted",()=>commit({op:"set",task:copy})); }
+    else if(act==="stop"&&x){ confirmDel=null; commit({op:"update",id,patch:{endKey:key}}); toast("Stopped repeating from here",()=>commit({op:"update",id,patch:{endKey:""}})); }
+    else if(act==="move"&&x){ commit({op:"update",id,patch:{period:key}}); toast("Moved"); }
+  });
+  $("#main").addEventListener("submit",e=>{
+    const f=e.target.closest("form.edit"); if(!f) return; e.preventDefault();
+    const fd=new FormData(f), title=String(fd.get("title")||"").trim(); if(!title) return;
+    const id=f.dataset.id; editing=null;
+    commit({op:"update",id,patch:{title,notes:String(fd.get("notes")||"").trim(),priority:String(fd.get("priority")||"med")}});
+    toast("Saved");
+  });
+
+  /* ================= settings ================= */
+  const panel=$("#settings");
+  function openSettings(){
+    const s=settings||{};
+    $("#sOwner").value=s.owner||""; $("#sRepo").value=s.repo||"todo-data"; $("#sBranch").value=s.branch||"main"; $("#sPath").value=s.path||"tasks.json";
+    $("#sToken").value=""; $("#sToken").placeholder = s.token ? "Saved — leave blank to keep it" : "github_pat_…"; $("#sToken").required = !s.token;
+    $("#sDisconnect").hidden=!connected(); $("#sMsg").textContent=""; $("#sMsg").className="wide msg";
+    panel.hidden=false; $("#sOwner").focus();
+  }
+  $("#syncChip").onclick=openSettings; $("#openSettings").onclick=openSettings;
+  document.addEventListener("click",e=>{ if(e.target.closest("[data-open-settings]")) openSettings(); });
+  $("#sClose").onclick=()=>{ panel.hidden=true; };
+  $("#setForm").addEventListener("submit",async e=>{
+    e.preventDefault();
+    const s={owner:$("#sOwner").value.trim(), repo:$("#sRepo").value.trim(), branch:$("#sBranch").value.trim()||"main", path:$("#sPath").value.trim().replace(/^\/+/,"")||"tasks.json", token:$("#sToken").value.trim()||(settings&&settings.token)||""};
+    const msg=$("#sMsg"); msg.className="wide msg"; msg.textContent="Checking access…"; $("#sConnect").disabled=true;
+    try{
+      const r=await fetch(api(s,""),{headers:headers(s),cache:"no-store"});
+      if(!r.ok) throw httpErr(r);
+      const info=await r.json();
+      if(info.permissions && info.permissions.push===false) throw Object.assign(new Error("This token can read the repository but not write to it."),{status:0});
+      const remote=await ghGet(s);
+      const wasConnected = connected();
+      const local = tasks.slice();
+      settings=s; LS.set("todo.settings",s);
+      base={tasks:remote.tasks, sha:remote.sha};
+      if(!wasConnected){
+        // bring over anything created on this device that GitHub doesn't have yet
+        const have=new Set(remote.tasks.map(t=>t.id));
+        pending = local.filter(t=>!have.has(t.id)).map(t=>({op:"add",task:t}));
+      }
+      persist(); recompute(); render();
+      msg.className="wide msg ok"; msg.textContent = remote.missing ? "Connected. tasks.json will be created on your first change." : `Connected. Loaded ${remote.tasks.length} task${remote.tasks.length===1?"":"s"} from GitHub.`;
+      $("#sDisconnect").hidden=false; showNotice("");
+      sync.lastSync=Date.now(); setSync("ok","Synced");
+      if(pending.length) scheduleFlush();
+      setTimeout(()=>{ panel.hidden=true; }, 1500);
+    }catch(err){
+      msg.className="wide msg err"; msg.textContent=explain(err);
+    }finally{ $("#sConnect").disabled=false; }
+  });
+  $("#sDisconnect").onclick=()=>{
+    if(pending.length){ base={tasks:tasks.slice(),sha:null}; pending=[]; }
+    settings=null; LS.del("todo.settings"); base.sha=null; persist(); recompute();
+    sync={state:"local",text:"Saved on this device",lastSync:null};
+    $("#sDisconnect").hidden=true; $("#sMsg").className="wide msg"; $("#sMsg").textContent="Disconnected. The token was removed from this browser; your tasks stay here and on GitHub.";
+    render();
+  };
+
+  /* ================= export / import ================= */
+  $("#exportBtn").onclick=()=>{
+    const blob=new Blob([JSON.stringify({version:1,exportedAt:new Date().toISOString(),tasks},null,1)],{type:"application/json"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="tasks-"+ymd(new Date())+".json";
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  };
+  $("#importBtn").onclick=()=>$("#importFile").click();
+  $("#importFile").addEventListener("change",async e=>{
+    const f=e.target.files[0]; e.target.value=""; if(!f) return;
+    try{
+      const j=JSON.parse(await f.text()); const list=Array.isArray(j)?j:j.tasks;
+      if(!Array.isArray(list)) throw new Error();
+      const have=new Set(tasks.map(t=>t.id)); let n=0;
+      for(const t of list){ if(t&&t.id&&t.title&&!have.has(t.id)){ commit({op:"add",task:t}); n++; } }
+      toast(n?`Imported ${n} task${n===1?"":"s"}`:"Nothing new to import");
+    }catch(_){ toast("That file isn't a tasks export."); }
+  });
+
+  /* ================= start ================= */
+  setInterval(()=>{ const s=ymd(new Date()); if(s!==render._day){ render._day=s; render(); } },60000);
+  render._day=ymd(new Date());
+  recompute(); render();
+  if(connected()){ pending.length ? flush() : pull(false); }
+})();
+</script>
+</body>
+</html>
